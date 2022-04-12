@@ -43,7 +43,6 @@ class RandomPlayer:
         action = self.random_choice(board)
         return action
 
-
 class HumanPlayer:
     """
     人类玩家
@@ -90,17 +89,18 @@ class HumanPlayer:
                 else:
                     print("你的输入不合法，请重新输入!")
 
-
 import copy
 import math
 import random
 
 
 def reverse_color(color):
+    #反转当前节点颜色
     return 'O' if color == 'X' else 'X'
 
 
 class Node:
+    #蒙特卡洛树的结点类
     def __init__(self, board, color, parent=None, action=None):
         self.visit = 0
         self.reward = 0.0
@@ -111,10 +111,12 @@ class Node:
         self.color = color
 
     def add_child(self, new_board, action):
+        #扩展当前节点的子节点
         child_node = Node(new_board, parent=self, action=action, color=reverse_color(self.color))
         self.children.append(child_node)
 
     def if_fully_expanded(self):
+        #判断当前节点是否被完全扩展
         cnt_max = len(list(self.board.get_legal_actions(self.color)))
         # print("cnt_max = ",cnt_max)
         cnt_now = len(self.children)
@@ -124,24 +126,43 @@ class Node:
         else:
             return False
 
+def random_pick(some_list, probabilities):
+    x = random.uniform(0,1)
+    cumulative_probability = 0.0
+    sum=0.0
+    for i in probabilities:
+        sum+=i
+    for item, item_probability in zip(some_list, probabilities):
+         cumulative_probability += item_probability
+         if x < cumulative_probability/sum:
+               break
+    return item
+
+def choose_action(actions):
+    '''    attemp1=['A1','A7','H1','H8']
+    attemp2r=['A2','H2','H6','B1','G1','B7','G7','A6']
+    attemp3 = ['A3', 'H3', 'H5', 'C1', 'F1', 'C7', 'F7', 'A5']
+    if 'A1' in actions:'''
+    col=random_pick(['A','H','B','G','C','F','D','E'],[10,10,5,5,2,2,1,1])
+    row = random_pick(['1', '8', '2', '7', '3', '6', '4', '5'], [10, 10, 5, 5, 2, 2, 1, 1])
+    return str(col+row)
 
 class AIPlayer:
     """
     AI 玩家
     """
-
     def __init__(self, color):
         """
         玩家初始化
         :param color: 下棋方，'X' - 黑棋，'O' - 白棋
         """
         self.color = color
-        self.C = 1.0
-        self.MaxT = 100
+        self.C = 0.01 #UCB1超参数C
+        self.MaxT = 100 #最大迭代次数
         self.root = None
 
     def if_terminal(self, state):
-        # to see a is terminal or not
+        # to see the game is terminal or not
         action_black = list(state.get_legal_actions('X'))
         action_white = list(state.get_legal_actions('O'))
         if (len(action_white) == 0 and len(action_black) == 0):
@@ -150,6 +171,7 @@ class AIPlayer:
             return False
 
     def back_propagate(self, node, reward):
+        #反向更新
         while (node is not None):
             node.visit += 1
             if self.color == 'X':
@@ -158,14 +180,19 @@ class AIPlayer:
                 node.reward -= reward
             node = node.parent
 
-    def reward_function(self, board, color):
+    def reward_function(self, board):
+        '''
+        reward计算函数
+        若胜利则奖励100分，附加胜利子数，失败则减，平局奖励为0
+        除100使之与探索量的量级接近
+        '''
         winner, diff = board.get_winner()
         if winner == 2:
             return 0
         elif winner == 0:
-            return (100 + diff)  # /100.0
+            return (100 + diff) /100.0
         else:
-            return (-100 - diff)  # /100.0
+            return (-100 - diff) /100.0
 
     def if_terminal(self, board):
         # to see a state is terminal or not
@@ -177,20 +204,24 @@ class AIPlayer:
             return False
 
     def stimulate_policy(self, node):
+        #模拟
         board = copy.deepcopy(node.board)
         color = copy.deepcopy(node.color)
         cnt = 0
         while not self.if_terminal(board):
+            #若未结束，则随机下至结束
             actions = list(board.get_legal_actions(color))
             if (len(actions) != 0):
                 action = random.choice(actions)
-                reverse_nodes = board._move(action, color)
-                for each in reverse_nodes:
-                    reverse_nodes
+                board._move(action, color)
             color = reverse_color(color)
-        return self.reward_function(board, node.color)
+        return self.reward_function(board)
 
+    def distanceFromCenter(self,node):
+        x,y = node.board.board_num(node.action)
+        return math.sqrt(abs(x-3.5)**2+abs(y-3.5)**2)
     def ucb(self, node):
+        #选择当前孩子中ucb值最大的，并返回
         max = -float('inf')
         max_set = []
         for c in node.children:
@@ -211,15 +242,47 @@ class AIPlayer:
             return node.parent
         else:
             return random.choice(max_set)
+    def ucb1(self, node):
+        #选择当前孩子中ucb值最大的，并返回
+        max = -float('inf')
+        max_set = []
+        for c in node.children:
+            exploit = c.reward / c.visit
+            explore = math.sqrt(2.0 * math.log(node.visit) / float(c.visit))
+            uct_score = exploit + self.C * explore #+0.2 * self.distanceFromCenter(c)
+
+            if (uct_score == max):
+                max_set.append(c)
+            elif (uct_score > max):
+                max_set = [c]
+                max = uct_score
+
+        if (len(max_set) == 0):
+            print("max_set is empty")
+            print(len(node.children))
+            # node.board.display()
+            return node.parent
+        else:
+            return random.choice(max_set)
 
     def expand(self, node):
-        actions_available = list(node.board.get_legal_actions(node.color))
+        #扩展当前搜索树
+        '''actions_available = list(node.board.get_legal_actions(node.color))
         actions_already = [c.action for c in node.children]
-        if (len(actions_available) == 0):
+        if(len(actions_available)==0):
             return node.parent
         action = random.choice(actions_available)
         while action in actions_already:
-            action = random.choice(actions_available)
+            action=random.choice(actions_available)'''
+        #'''
+        actions_available = list(node.board.get_legal_actions(node.color))
+        if (len(actions_available) == 0):
+            return node.parent
+        actions_already = [c.action for c in node.children]
+        action = choose_action(actions_available)
+        while action not in actions_available or action in actions_already:
+            action = choose_action(actions_available)
+        #'''
         # print(action)
         new_state = copy.deepcopy(node.board)
         new_state._move(action, node.color)
@@ -228,9 +291,10 @@ class AIPlayer:
         return node.children[-1]
 
     def select_policy(self, node):
+        #选择并扩展
         while (not self.if_terminal(node.board)):
             if (len(list(node.board.get_legal_actions(node.color))) == 0):
-                return node;
+                return node
             elif (not node.if_fully_expanded()):
                 # print("need to expand")
                 new_node = self.expand(node)
@@ -241,22 +305,22 @@ class AIPlayer:
                 # node.state.display()
                 # print(len(node.children))
                 # print(list(node.state.get_legal_actions(node.color)))
-                node = self.ucb(node)
+                node = self.ucb1(node)
         return node
 
     def MCTS_search(self, root):
+        #蒙特卡洛树搜索
         # print("root state :")
         # root.state.display()
         for t in range(self.MaxT):
-            # print("$$$$$$$$$$$$$$t = ",t)
-            leave = self.select_policy(root)
+            leave = self.select_policy(root)#选择
             # print("leave state:")
             # leave.state.display()
-            rewards = self.stimulate_policy(leave)
-            self.back_propagate(leave, rewards)
+            rewards = self.stimulate_policy(leave)#模拟
+            self.back_propagate(leave, rewards)#反向更新
         # print("root state :")
         # root.state.display()
-        return self.ucb(root).action
+        return self.ucb1(root).action
 
     def get_move(self, board):
         """
@@ -268,7 +332,7 @@ class AIPlayer:
             player_name = '黑棋'
         else:
             player_name = '白棋'
-        print("请等一会，对方 {}-{} 正在思考中...".format(player_name, self.color))
+        #print("请等一会，对方 {}-{} 正在思考中...".format(player_name, self.color))
 
         # -----------------请实现你的算法代码--------------------------------------
         root_board = copy.deepcopy(board)
@@ -277,8 +341,7 @@ class AIPlayer:
         # ------------------------------------------------------------------------
         return action
 
-import copy
-class Node1:
+class Node2:
     def __init__(self,state,color,parent = None,action = None):
         self.visit = 0
         self.blackwin = 0
@@ -291,7 +354,7 @@ class Node1:
         self.color = color
 
     def add_child(self,new_state,action,color):
-        child_node = Node1(new_state,parent=self,action = action,color=color)
+        child_node = Node2(new_state,parent=self,action = action,color=color)
         self.children.append(child_node)
 
     def if_fully_expanded(self):
@@ -303,7 +366,6 @@ class Node1:
             return True
         else:
             return False
-
 class AIPlayer2:
     """
     AI 玩家
@@ -400,7 +462,7 @@ class AIPlayer2:
     def select_policy(self,node):
         while(not self.if_terminal(node.state)):
             if(len(list(node.state.get_legal_actions(node.color)))==0):
-                return node;
+                return node
             elif(not node.if_fully_expanded()):
                # print("need to expand")
                 new_node = self.expand(node)
@@ -441,7 +503,7 @@ class AIPlayer2:
         # -----------------请实现你的算法代码--------------------------------------
         action = None
         root_board = copy.deepcopy(board)
-        root = Node1(state=root_board,color=self.color)
+        root = Node2(state=root_board,color=self.color)
         action = self.MCTS_search(root)
 
         # ------------------------------------------------------------------------

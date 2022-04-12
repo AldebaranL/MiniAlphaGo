@@ -87,7 +87,7 @@ class Game(object):
         # 游戏开始
         print('\n=====开始游戏!=====\n')
         # 棋盘初始化
-       # self.board.display(step_time, total_time)
+        #self.board.display(step_time, total_time)
         while True:
             # 切换当前玩家,如果当前玩家是 None 或者白棋 white_player，则返回黑棋 black_player;
             #  否则返回 white_player。
@@ -171,7 +171,7 @@ class Game(object):
                     step_time["O"] = es_time
                     total_time["O"] += es_time
                 # 显示当前棋盘
-               # self.board.display(step_time, total_time)
+                self.board.display(step_time, total_time)
 
                 # 判断游戏是否结束
                 if self.game_over():
